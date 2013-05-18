@@ -15,10 +15,13 @@ namespace Armiger
         readonly string _backupPath, _journalPath;
         ConcurrentDictionary<string, string> _backupJournal = new ConcurrentDictionary<string, string>();
 
+        StreamWriter _journalWriter;
+
         public Recovery(string backupPath)
         {
             _backupPath = backupPath;
             _journalPath = Path.Combine(_backupPath, _journalFile);
+            _journalWriter = new StreamWriter(_journalPath + ".safe") { AutoFlush = true };
         }
         ~Recovery()
         {
@@ -48,7 +51,9 @@ namespace Armiger
 
                 if (!_backupJournal.TryAdd(file, bkpPath))
                     throw new ArgumentException();
+
                 File.Move(file, bkpPath);
+                LogJournalLine(_journalWriter, file, bkpPath);
             }
         }
 
@@ -71,10 +76,18 @@ namespace Armiger
 
         public void FlushJournal()
         {
-            using (var stream = File.OpenWrite(_journalPath))
-            using (var writer = new StreamWriter(stream))
-                foreach (var kvp in _backupJournal)
-                    writer.WriteLine("{0}::{1}", kvp.Key, kvp.Value);
+            //using (var writer = new StreamWriter(_journalPath))
+            //    foreach (var kvp in _backupJournal)
+            //        LogJournalLine(writer, kvp.Key, kvp.Value);
+            _journalWriter.Flush();
+            _journalWriter.Dispose();
+
+            File.Move(_journalPath + ".safe", _journalPath);
+        }
+
+        void LogJournalLine(StreamWriter writer, string oldF, string newF)
+        {
+            writer.WriteLine("{0}::{1}", oldF, newF);
         }
     }
 }

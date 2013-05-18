@@ -16,7 +16,7 @@ namespace Armiger
             {
                 Trace.Listeners.Add(new ConsoleTraceListener(false));
 
-                //var recov = new Recovery(@"..\Release\Backup\-8588327262962227421\");
+                //var recov = new Recovery(@"Backup\-8588327220423303413\");
                 //recov.RestoreFromJournal();
                 //Console.ReadKey();
                 //return;
@@ -52,29 +52,29 @@ namespace Armiger
         static void Operate(string root, string backup, string operation)
         {
             var backupDI = Directory.CreateDirectory(Path.Combine(backup, DateTime.Now.ToBinary() + @"\"));
-            var recovery = new Recovery(backupDI.FullName);
-
-            var scanner = new Scanner(root, recovery);
-            foreach (var kvp in scanner.RemovePattern("thumbs.db", "pspbrwse.jbf", "*.tmp"))
+            using (var recovery = new Recovery(backupDI.FullName))
             {
-                Console.WriteLine("Removing flotsam " + kvp.Key);
-                kvp.Value();
-            }
 
-            using (var org = new Organizer(scanner.ScanPattern("*.dds"), recovery))
-            {
-                org.Completed.Wait();
-            }
-            Console.WriteLine("DXT Processing complete. Press any key to proceed to duplicate removal.");
-            Console.ReadKey();
+                var scanner = new Scanner(root, recovery);
+                foreach (var kvp in scanner.RemovePattern("thumbs.db", "pspbrwse.jbf", "*.tmp"))
+                {
+                    Console.WriteLine("Removing flotsam " + kvp.Key);
+                    kvp.Value();
+                }
 
-            foreach (var kvp in scanner.RemoveDuplicates("*.dds"))
-            {
-                Console.WriteLine("Removing duplicates of " + kvp.Key);
-                kvp.Value();
-            }
+                using (var org = new Organizer(scanner.ScanPattern("*.dds"), recovery))
+                {
+                    org.Completed.Wait();
+                }
+                Console.WriteLine("DXT Processing complete. Press any key to proceed to duplicate removal.");
+                Console.ReadKey();
 
-            recovery.FlushJournal();
+                foreach (var kvp in scanner.RemoveDuplicates("*.dds"))
+                {
+                    Console.WriteLine("Removing duplicates of " + kvp.Key);
+                    kvp.Value();
+                }
+            }
             Console.WriteLine("Good.");
         }
     }

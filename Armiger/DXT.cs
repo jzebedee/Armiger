@@ -12,17 +12,20 @@ using SharpDX.Direct3D;
 using SharpDX.Direct3D11;
 using GraphicsDevice = SharpDX.Toolkit.Graphics.GraphicsDevice;
 using Job = System.Collections.Generic.KeyValuePair<string, byte[]>;
+using JobResult = System.Tuple<string, Armiger.DXTManager.Result, byte[]>;
 
 namespace Armiger
 {
     public sealed class DXTManager
     {
+        [Flags]
         public enum Result
         {
-            NoAction = 0,
-            Delete = 1,
-            Failed = 2,
-            CompressedBC3 = 3,
+            NoAction = 0x0,
+            Delete = 0x1,
+            Failed = 0x2,
+            CompressedBC3 = 0x3,
+            GeneratedMipmaps = 0x4,
         }
 
         static readonly Lazy<DXTManager> _instance = new Lazy<DXTManager>(() => new DXTManager());
@@ -37,11 +40,11 @@ namespace Armiger
 
         volatile int _count;
 
-        public async Task<Result> Process(Job job, Recovery recovery)
+        public async Task<JobResult> Process(Job job, Recovery recovery)
         {
             _count++;
             var result = /* _process(file, recovery); */
-                await Task.Factory.StartNew<Result>(() => _process(job, recovery));
+                await Task.Factory.StartNew<JobResult>(() => _process(job, recovery));
 
             Trace.TraceInformation("Count hit: " + --_count);
             return result;
@@ -77,12 +80,15 @@ namespace Armiger
         //    return null;
         //}
 
-        private Result _process(Job job, Recovery recovery, bool asMappable = true)
+        private JobResult _process(Job job, Recovery recovery, bool asMappable = true)
         {
             string file = job.Key;
 
             byte[] fBytes = job.Value;
             int fLen = fBytes.Length;
+
+            Result code = Result.NoAction;
+            byte[] output = null;
 
             using (var ms = new MemoryStream(fBytes))
                 try
@@ -93,6 +99,8 @@ namespace Armiger
                         {
                             Trace.TraceInformation("Generating mipmaps...");
                             tex.GenerateMipMaps();
+
+                            code |= Result.GeneratedMipmaps;
                         }
                         if (!tex.IsBlockCompressed)
                         {
@@ -127,15 +135,11 @@ namespace Armiger
                                     Texture2D.ToStream(_device, newTex, ImageFileFormat.Dds, msNew);
 
                                     recovery.Backup(file);
-                                    using (var fstream = File.OpenWrite(file))
-                                    {
-                                        msNew.WriteTo(fstream);
-                                        fstream.Flush();
-                                    }
+                                    output = msNew.ToArray();
                                 }
 
                                 Trace.TraceInformation(Path.GetFileNameWithoutExtension(file) + " converted to BC3");
-                                return Result.CompressedBC3;
+                                code |= Result.CompressedBC3;
                             }
                         }
                     }
@@ -145,10 +149,10 @@ namespace Armiger
                     if (asMappable)
                         return _process(job, recovery, false);
                     Trace.TraceError(sdx.ToString());
-                    return Result.Failed;
+                    code = Result.Failed;
                 }
 
-            return Result.NoAction;
+            return new JobResult(file, code, output);
         }
     }
 }

@@ -7,15 +7,15 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Threading;
 using Job = System.Collections.Generic.KeyValuePair<string, byte[]>;
+using JobResult = System.Tuple<string, Armiger.DXTManager.Result, byte[]>;
 
 namespace Armiger
 {
     public class Organizer : IDisposable
     {
-        BlockingCollection<Job> _jobs = new BlockingCollection<Job>();
-
-        Task tFileReader;
-        Task tFileProcessor;
+        BlockingCollection<Job>
+            _jobsIn = new BlockingCollection<Job>(),
+            _jobsOut = new BlockingCollection<Job>();
 
         CancellationTokenSource _source = new CancellationTokenSource();
 
@@ -25,8 +25,8 @@ namespace Armiger
 
         public Organizer(IEnumerable<string> files, Recovery recovery)
         {
-            tFileReader = Task.Factory.StartNew(() => ReadFiles(files), token);
-            tFileProcessor = Task.Factory.StartNew(() => ProcessFiles(recovery), token);
+            Task.Factory.StartNew(() => ReadFiles(files), token).ContinueWith(t => WriteFiles(), token);
+            Task.Factory.StartNew(() => ProcessFiles(recovery), token);
         }
         ~Organizer()
         {
@@ -41,6 +41,8 @@ namespace Armiger
         protected virtual void Dispose(bool disposing)
         {
             _source.Cancel();
+            if (disposing)
+                Completed.Wait();
         }
 
         protected void ReadFiles(IEnumerable<string> files)
@@ -50,28 +52,43 @@ namespace Armiger
                 if (token.IsCancellationRequested)
                     break;
 
-                _jobs.Add(new KeyValuePair<string, byte[]>(file, File.ReadAllBytes(file)));
+                _jobsIn.Add(new Job(file, File.ReadAllBytes(file)));
             }
-            _jobs.CompleteAdding();
+            _jobsIn.CompleteAdding();
         }
 
-        protected async void ProcessFiles(Recovery recovery)
+        protected void WriteFiles()
         {
-            foreach (var job in _jobs.GetConsumingEnumerable(token))
+            foreach (var job in _jobsOut.GetConsumingEnumerable(token))
             {
-                await ProcessFile(job, recovery);
+                File.WriteAllBytes(job.Key, job.Value);
             }
             Completed.Set();
         }
 
-        protected async Task ProcessFile(Job job, Recovery recovery)
+        protected void ProcessFiles(Recovery recovery)
+        {
+            Parallel.ForEach(_jobsIn.GetConsumingEnumerable(token), job =>
+            {
+                var jobResult = ProcessFile(job, recovery).Result;
+                var res = jobResult.Item2;
+
+                if (res.HasFlag(DXTManager.Result.CompressedBC3))
+                    _jobsOut.Add(new Job(jobResult.Item1, jobResult.Item3));
+            });
+            _jobsOut.CompleteAdding();
+        }
+
+        protected async Task<JobResult> ProcessFile(Job job, Recovery recovery)
         {
             var result = await DXTManager.Instance.Process(job, recovery);
 
             var sb = new StringBuilder();
             sb.AppendLine("Processed " + job.Key);
-            sb.AppendLine("Result: " + result.ToString());
+            sb.AppendLine("Result: " + result.Item2.ToString());
             Console.WriteLine(sb.ToString());
+
+            return result;
         }
     }
 }
