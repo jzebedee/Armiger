@@ -16,10 +16,10 @@ namespace Armiger
             {
                 Trace.Listeners.Add(new ConsoleTraceListener(false));
 
-                var recov = new Recovery(@"..\Release\Backup\-8588327262962227421\");
-                recov.RestoreFromJournal();
-                Console.ReadKey();
-                return;
+                //var recov = new Recovery(@"..\Release\Backup\-8588327262962227421\");
+                //recov.RestoreFromJournal();
+                //Console.ReadKey();
+                //return;
 
                 Console.WriteLine("Armiger");
                 PrintBorder();
@@ -61,13 +61,10 @@ namespace Armiger
                 kvp.Value();
             }
 
-            var fileTasks = new List<Task>();
-            foreach (var file in scanner.ScanPattern("*.dds"))
+            using (var org = new Organizer(scanner.ScanPattern("*.dds"), recovery))
             {
-                fileTasks.Add(ProcessFile(file, recovery));
+                org.Completed.Wait();
             }
-            Task.WhenAll(fileTasks).Wait();
-
             Console.WriteLine("DXT Processing complete. Press any key to proceed to duplicate removal.");
             Console.ReadKey();
 
@@ -79,15 +76,6 @@ namespace Armiger
 
             recovery.FlushJournal();
             Console.WriteLine("Good.");
-        }
-
-        static async Task ProcessFile(string file, Recovery recovery)
-        {
-            var result = await DXTManager.Instance.Process(file, recovery);
-            var sb = new StringBuilder();
-            sb.AppendLine("Checked " + file);
-            sb.AppendLine("Result: " + result.ToString());
-            Console.WriteLine(sb.ToString());
         }
     }
 }

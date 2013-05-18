@@ -11,6 +11,7 @@ using SharpDX;
 using SharpDX.Direct3D;
 using SharpDX.Direct3D11;
 using GraphicsDevice = SharpDX.Toolkit.Graphics.GraphicsDevice;
+using Job = System.Collections.Generic.KeyValuePair<string, byte[]>;
 
 namespace Armiger
 {
@@ -36,51 +37,52 @@ namespace Armiger
 
         volatile int _count;
 
-        public async Task<Result> Process(string file, Recovery recovery)
+        public async Task<Result> Process(Job job, Recovery recovery)
         {
             _count++;
             var result = /* _process(file, recovery); */
-                await Task.Factory.StartNew<Result>(() => _process(file, recovery));
+                await Task.Factory.StartNew<Result>(() => _process(job, recovery));
 
             Trace.TraceInformation("Count hit: " + --_count);
             return result;
         }
 
         //bmp > tga > png > dds
-        private Result _process(string file, Recovery recovery, bool asMappable = true, byte[] fBytes = null)
-        {
-            int fLen;
-            if (fBytes == null)
-            {
-                try
-                {
-                    fBytes = File.ReadAllBytes(file);
-                    fLen = fBytes.Length;
+        //public byte[] ReadFile(string file)
+        //{
+        //    try
+        //    {
+        //        byte[] fBytes = File.ReadAllBytes(file);
 
-                    if (fLen == 0)
-                    {
-                        switch (Path.GetExtension(file).ToLowerInvariant())
-                        {
-                            case "bmp":
-                                return _process(Path.ChangeExtension(file, "tga"), recovery);
-                            case "tga":
-                                return _process(Path.ChangeExtension(file, "png"), recovery);
-                            case "png":
-                                return _process(Path.ChangeExtension(file, "dds"), recovery);
-                            case "dds":
-                            default:
-                                return Result.Delete;
-                        }
-                    }
-                }
-                catch (IOException e)
-                {
-                    Trace.TraceError(e.ToString());
-                    return Result.Failed;
-                }
-            }
-            else
-                fLen = fBytes.Length;
+        //        if (fBytes.Length == 0)
+        //        {
+        //            switch (Path.GetExtension(file).ToLowerInvariant())
+        //            {
+        //                case "bmp":
+        //                    return ReadFile(Path.ChangeExtension(file, "tga"));
+        //                case "tga":
+        //                    return ReadFile(Path.ChangeExtension(file, "png"));
+        //                case "png":
+        //                    return ReadFile(Path.ChangeExtension(file, "dds"));
+        //                //case "dds":
+        //                //default:
+        //            }
+        //        }
+        //    }
+        //    catch (IOException e)
+        //    {
+        //        Trace.TraceError(e.ToString());
+        //    }
+
+        //    return null;
+        //}
+
+        private Result _process(Job job, Recovery recovery, bool asMappable = true)
+        {
+            string file = job.Key;
+
+            byte[] fBytes = job.Value;
+            int fLen = fBytes.Length;
 
             using (var ms = new MemoryStream(fBytes))
                 try
@@ -141,7 +143,7 @@ namespace Armiger
                 catch (SharpDXException sdx)
                 {
                     if (asMappable)
-                        return _process(file, recovery, false, fBytes);
+                        return _process(job, recovery, false);
                     Trace.TraceError(sdx.ToString());
                     return Result.Failed;
                 }
