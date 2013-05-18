@@ -6,7 +6,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Threading.Tasks;
 using System.Threading;
-//using System.Diagnostics;
+using System.Diagnostics;
 using SharpDX;
 using SharpDX.Direct3D;
 using SharpDX.Direct3D11;
@@ -42,8 +42,7 @@ namespace Armiger
             var result = /* _process(file, recovery); */
                 await Task.Factory.StartNew<Result>(() => _process(file, recovery));
 
-            //Trace.TraceInformation(
-            Console.WriteLine("Count hit: " + --_count);
+            Trace.TraceInformation("Count hit: " + --_count);
             return result;
         }
 
@@ -60,8 +59,7 @@ namespace Armiger
 
                     if (fLen == 0)
                     {
-                        var ext = Path.GetExtension(file).ToLowerInvariant();
-                        switch (ext)
+                        switch (Path.GetExtension(file).ToLowerInvariant())
                         {
                             case "bmp":
                                 return _process(Path.ChangeExtension(file, "tga"), recovery);
@@ -71,14 +69,13 @@ namespace Armiger
                                 return _process(Path.ChangeExtension(file, "dds"), recovery);
                             case "dds":
                             default:
-                                recovery.Backup(file);
                                 return Result.Delete;
                         }
                     }
                 }
                 catch (IOException e)
                 {
-                    //Trace.TraceError(e.ToString());
+                    Trace.TraceError(e.ToString());
                     return Result.Failed;
                 }
             }
@@ -92,14 +89,14 @@ namespace Armiger
                     {
                         if (tex.Description.BindFlags.HasFlag(BindFlags.RenderTarget | BindFlags.ShaderResource) && tex.Description.MipLevels > 1)
                         {
-                            //Trace.TraceInformation("Generating mipmaps...");
+                            Trace.TraceInformation("Generating mipmaps...");
                             tex.GenerateMipMaps();
                         }
                         if (!tex.IsBlockCompressed)
                         {
                             var loadOpts = new ImageLoadInformation()
                             {
-                                Format = SharpDX.DXGI.Format.BC3_UNorm_SRgb,
+                                Format = SharpDX.DXGI.Format.BC3_UNorm,
                             };
 
                             //var loadOpts = new ImageLoadInformation
@@ -128,13 +125,14 @@ namespace Armiger
                                     Texture2D.ToStream(_device, newTex, ImageFileFormat.Dds, msNew);
 
                                     recovery.Backup(file);
-                                    using (var fstream = File.OpenWrite(file)) {
+                                    using (var fstream = File.OpenWrite(file))
+                                    {
                                         msNew.WriteTo(fstream);
                                         fstream.Flush();
                                     }
                                 }
 
-                                //Trace.TraceInformation(Path.GetFileNameWithoutExtension(file) + " converted to BC3");
+                                Trace.TraceInformation(Path.GetFileNameWithoutExtension(file) + " converted to BC3");
                                 return Result.CompressedBC3;
                             }
                         }
@@ -144,7 +142,7 @@ namespace Armiger
                 {
                     if (asMappable)
                         return _process(file, recovery, false, fBytes);
-                    //Trace.TraceError(sdx.ToString());
+                    Trace.TraceError(sdx.ToString());
                     return Result.Failed;
                 }
 

@@ -12,12 +12,13 @@ namespace Armiger
     {
         const string _journalFile = ".journal";
 
-        string _backupPath;
+        readonly string _backupPath, _journalPath;
         ConcurrentDictionary<string, string> _backupJournal = new ConcurrentDictionary<string, string>();
 
         public Recovery(string backupPath)
         {
             _backupPath = backupPath;
+            _journalPath = Path.Combine(_backupPath, _journalFile);
         }
         ~Recovery()
         {
@@ -56,9 +57,21 @@ namespace Armiger
             Backup(files as IEnumerable<string>);
         }
 
+        public void RestoreFromJournal()
+        {
+            foreach (var line in File.ReadAllLines(_journalPath))
+            {
+                var groups = line.Split(new[] { "::" }, StringSplitOptions.None);
+
+                File.Delete(groups[0]);
+                File.Move(groups[1], groups[0]);//, Path.GetTempFileName());
+                Console.WriteLine("Restored " + Path.GetFileNameWithoutExtension(groups[1]));
+            }
+        }
+
         public void FlushJournal()
         {
-            using (var stream = File.OpenWrite(Path.Combine(_backupPath, _journalFile)))
+            using (var stream = File.OpenWrite(_journalPath))
             using (var writer = new StreamWriter(stream))
                 foreach (var kvp in _backupJournal)
                     writer.WriteLine("{0}::{1}", kvp.Key, kvp.Value);

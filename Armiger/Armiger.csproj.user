@@ -3,4 +3,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
     <StartArguments>"X:\Games\Skyrim\\" "Backup\\" 11231254</StartArguments>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
+    <StartArguments>"X:\Games\Skyrim\\" "Backup\\" 11231254</StartArguments>
+  </PropertyGroup>
 </Project>

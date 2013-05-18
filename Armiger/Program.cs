@@ -16,6 +16,11 @@ namespace Armiger
             {
                 Trace.Listeners.Add(new ConsoleTraceListener(false));
 
+                var recov = new Recovery(@"..\Release\Backup\-8588327262962227421\");
+                recov.RestoreFromJournal();
+                Console.ReadKey();
+                return;
+
                 Console.WriteLine("Armiger");
                 PrintBorder();
 
