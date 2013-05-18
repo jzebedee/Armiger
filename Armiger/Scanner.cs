@@ -14,14 +14,12 @@ namespace Armiger
         Recovery _recovery;
 
         //backup cannot be a subdirectory of rootpath
-        public Scanner(string root, string backup)
+        public Scanner(string root, Recovery recovery)
         {
             if (!Directory.Exists(root))
                 throw new ArgumentException("Root directory does not exist", "root");
 
-            var backupDI = Directory.CreateDirectory(Path.Combine(backup, DateTime.Now.ToBinary() + @"\"));
-            _recovery = new Recovery(backupDI.FullName);
-
+            _recovery = recovery;
             _rootPath = root;
         }
 

@@ -43,19 +43,24 @@ namespace Armiger
 
         static void Operate(string root, string backup, string operation)
         {
-            var scanner = new Scanner(root, backup);
+            var backupDI = Directory.CreateDirectory(Path.Combine(backup, DateTime.Now.ToBinary() + @"\"));
+            var recovery = new Recovery(backupDI.FullName);
+
+            var scanner = new Scanner(root, recovery);
             foreach (var kvp in scanner.RemovePattern("thumbs.db", "pspbrwse.jbf", "*.tmp"))
             {
                 Console.WriteLine("Removing flotsam " + kvp.Key);
                 kvp.Value();
             }
+            Console.ReadKey();
 
             var fileTasks = new List<Task>();
             foreach (var file in scanner.ScanPattern("*.dds"))
             {
-                fileTasks.Add(ProcessFile(file));
+                fileTasks.Add(ProcessFile(file, recovery));
             }
             Task.WhenAll(fileTasks).Wait();
+            Console.ReadKey();
 
             foreach (var kvp in scanner.RemoveDuplicates("*.dds"))
             {
@@ -65,12 +70,9 @@ namespace Armiger
             Console.WriteLine("Good.");
         }
 
-        static async Task ProcessFile(string file)
+        static async Task ProcessFile(string file, Recovery recovery)
         {
-            var result = await DXTManager.Instance.Process(file);
-
-            //System.Diagnostics.Trace.Assert(result == DXTManager.Result.NoAction);
-
+            var result = await DXTManager.Instance.Process(file, recovery);
             var sb = new StringBuilder();
             sb.AppendLine("Checked " + file);
             sb.AppendLine("Result: " + result.ToString());

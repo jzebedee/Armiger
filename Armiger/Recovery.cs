@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Collections.Concurrent;
 
 namespace Armiger
 {
@@ -12,14 +13,24 @@ namespace Armiger
         const string _journalFile = ".journal";
 
         string _backupPath;
-        Dictionary<string, string> _backupJournal = new Dictionary<string, string>();
+        ConcurrentDictionary<string, string> _backupJournal = new ConcurrentDictionary<string, string>();
 
         public Recovery(string backupPath)
         {
             _backupPath = backupPath;
         }
+        ~Recovery()
+        {
+            Dispose(false);
+        }
 
-        public virtual void Dispose()
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
         {
             FlushJournal();
         }
@@ -34,7 +45,8 @@ namespace Armiger
                 while (File.Exists(bkpPath))
                     bkpPath = Path.ChangeExtension(bkpPath, Path.GetExtension(bkpPath) + rand.Next(0, 10));
 
-                _backupJournal.Add(file, bkpPath);
+                if (!_backupJournal.TryAdd(file, bkpPath))
+                    throw new ArgumentException();
                 File.Move(file, bkpPath);
             }
         }

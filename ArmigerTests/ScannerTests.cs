@@ -16,7 +16,8 @@ namespace ArmigerTests
 
             var dir = Path.GetDirectoryName(rand);
 
-            var scanner = new Armiger.Scanner(dir, @"Backup\");
+            var recovery = new Armiger.Recovery(@"Backup\");
+            var scanner = new Armiger.Scanner(dir, recovery);
 
             var results = scanner.ScanPattern("*");
             Assert.IsTrue(results.Contains(rand), "Scanner didn't find basedir target with wildcard pattern");
