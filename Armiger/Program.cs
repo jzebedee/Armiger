@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.IO;
+using System.Diagnostics;
 
 namespace Armiger
 {
@@ -13,6 +14,8 @@ namespace Armiger
         {
             try
             {
+                Trace.Listeners.Add(new ConsoleTraceListener(false));
+
                 Console.WriteLine("Armiger");
                 PrintBorder();
 
@@ -52,7 +55,6 @@ namespace Armiger
                 Console.WriteLine("Removing flotsam " + kvp.Key);
                 kvp.Value();
             }
-            Console.ReadKey();
 
             var fileTasks = new List<Task>();
             foreach (var file in scanner.ScanPattern("*.dds"))
@@ -60,6 +62,8 @@ namespace Armiger
                 fileTasks.Add(ProcessFile(file, recovery));
             }
             Task.WhenAll(fileTasks).Wait();
+
+            Console.WriteLine("DXT Processing complete. Press any key to proceed to duplicate removal.");
             Console.ReadKey();
 
             foreach (var kvp in scanner.RemoveDuplicates("*.dds"))
@@ -67,6 +71,8 @@ namespace Armiger
                 Console.WriteLine("Removing duplicates of " + kvp.Key);
                 kvp.Value();
             }
+
+            recovery.FlushJournal();
             Console.WriteLine("Good.");
         }
 

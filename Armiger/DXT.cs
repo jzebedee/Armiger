@@ -6,7 +6,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Threading.Tasks;
 using System.Threading;
-using System.Diagnostics;
+//using System.Diagnostics;
 using SharpDX;
 using SharpDX.Direct3D;
 using SharpDX.Direct3D11;
@@ -29,7 +29,7 @@ namespace Armiger
 
         private DXTManager()
         {
-            _device = GraphicsDevice.New(DeviceCreationFlags.Debug, FeatureLevel.Level_11_0);
+            _device = GraphicsDevice.New(DriverType.Null, DeviceCreationFlags.None, FeatureLevel.Level_11_0);
             _count = 0;
         }
         readonly GraphicsDevice _device;
@@ -39,23 +39,28 @@ namespace Armiger
         public async Task<Result> Process(string file, Recovery recovery)
         {
             _count++;
-            return await Task.Factory.StartNew<Result>(() => _process(file, recovery)).ContinueWith(intask =>
-            {
-                Console.WriteLine("Count hit: " + --_count);
-                return intask.Result;
-            });
+            var result = /* _process(file, recovery); */
+                await Task.Factory.StartNew<Result>(() => _process(file, recovery));
+
+            //Trace.TraceInformation(
+            Console.WriteLine("Count hit: " + --_count);
+            return result;
         }
 
         //bmp > tga > png > dds
-        private unsafe Result _process(string file, Recovery recovery)
+        private Result _process(string file, Recovery recovery, bool asMappable = true, byte[] fBytes = null)
         {
-            try
+            int fLen;
+            if (fBytes == null)
             {
-                var ext = Path.GetExtension(file).ToLowerInvariant();
-                using (var fstream = File.OpenRead(file))
+                try
                 {
-                    if (fstream.Length == 0)
+                    fBytes = File.ReadAllBytes(file);
+                    fLen = fBytes.Length;
+
+                    if (fLen == 0)
                     {
+                        var ext = Path.GetExtension(file).ToLowerInvariant();
                         switch (ext)
                         {
                             case "bmp":
@@ -70,61 +75,78 @@ namespace Armiger
                                 return Result.Delete;
                         }
                     }
+                }
+                catch (IOException e)
+                {
+                    //Trace.TraceError(e.ToString());
+                    return Result.Failed;
+                }
+            }
+            else
+                fLen = fBytes.Length;
 
-                    using (var tex = SharpDX.Toolkit.Graphics.Texture2D.Load(_device, fstream))
+            using (var ms = new MemoryStream(fBytes))
+                try
+                {
+                    using (var tex = SharpDX.Toolkit.Graphics.Texture.Load(_device, ms, asMappable ? SharpDX.Toolkit.Graphics.TextureFlags.RenderTarget : SharpDX.Toolkit.Graphics.TextureFlags.ShaderResource, ResourceUsage.Default))
                     {
+                        if (tex.Description.BindFlags.HasFlag(BindFlags.RenderTarget | BindFlags.ShaderResource) && tex.Description.MipLevels > 1)
+                        {
+                            //Trace.TraceInformation("Generating mipmaps...");
+                            tex.GenerateMipMaps();
+                        }
                         if (!tex.IsBlockCompressed)
                         {
-                            var desc = tex.Description;
-
-                            var imginf = ImageInformation.FromFile(file).Value;
-                            try
+                            var loadOpts = new ImageLoadInformation()
                             {
-                                var loadOpts = new ImageLoadInformation
+                                Format = SharpDX.DXGI.Format.BC3_UNorm_SRgb,
+                            };
+
+                            //var loadOpts = new ImageLoadInformation
+                            //{
+                            //    //BindFlags = desc.BindFlags,
+                            //    //CpuAccessFlags = desc.CpuAccessFlags,
+                            //    //Depth = desc.Depth,
+                            //    //Filter = FilterFlags.None,
+                            //    //FirstMipLevel = 0,
+                            //    Format = SharpDX.DXGI.Format.BC3_UNorm_SRgb,
+                            //    //Height = tex.Height,
+                            //    //Width = tex.Width,
+                            //    //MipFilter = FilterFlags.,
+                            //    //MipLevels = desc.MipLevels,
+                            //    //OptionFlags = desc.OptionFlags,
+                            //    //PSrcInfo = new IntPtr(&imginf),
+                            //    //Usage = desc.Usage,
+                            //};
+
+                            ms.Seek(0, SeekOrigin.Begin);
+                            System.Diagnostics.Trace.Assert(tex.GetType() == typeof(SharpDX.Toolkit.Graphics.Texture2D));
+                            using (var newTex = Texture2D.FromStream(_device, ms, fLen, loadOpts))
+                            {
+                                using (var msNew = new MemoryStream())
                                 {
-                                    BindFlags = desc.BindFlags,
-                                    CpuAccessFlags = desc.CpuAccessFlags,
-                                    Depth = desc.Depth,
-                                    //Filter = FilterFlags.None,
-                                    //FirstMipLevel = 0,
-                                    Format = SharpDX.DXGI.Format.BC3_UNorm_SRgb,
-                                    Height = tex.Height,
-                                    Width = tex.Width,
-                                    //MipFilter = FilterFlags.,
-                                    MipLevels = desc.MipLevels,
-                                    OptionFlags = desc.OptionFlags,
-                                    PSrcInfo = new IntPtr(&imginf),
-                                    Usage = desc.Usage,
-                                };
+                                    Texture2D.ToStream(_device, newTex, ImageFileFormat.Dds, msNew);
 
-                                fstream.Seek(0, SeekOrigin.Begin);
-                                using (var newTex = SharpDX.Direct3D11.Texture2D.FromStream(_device, fstream, (int)fstream.Length, loadOpts))
-                                {
-                                    fstream.Dispose();
-
-                                    //recovery.Backup(file);
-                                    SharpDX.Direct3D11.Texture2D.ToFile(_device, newTex, SharpDX.Direct3D11.ImageFileFormat.Dds, Path.ChangeExtension(file, "xdds"));
-                                    Console.WriteLine(Path.GetFileNameWithoutExtension(file) + " converted to BC3");
-
-                                    return Result.CompressedBC3;
+                                    recovery.Backup(file);
+                                    using (var fstream = File.OpenWrite(file)) {
+                                        msNew.WriteTo(fstream);
+                                        fstream.Flush();
+                                    }
                                 }
-                            }
-                            catch (System.Runtime.InteropServices.SEHException SEHexC)
-                            {
-                                return Result.Failed;
-                            }
-                            catch (Exception e)
-                            {
-                                return Result.Failed;
+
+                                //Trace.TraceInformation(Path.GetFileNameWithoutExtension(file) + " converted to BC3");
+                                return Result.CompressedBC3;
                             }
                         }
                     }
                 }
-            }
-            catch (FileNotFoundException e)
-            {
-                Trace.TraceError(e.ToString());
-            }
+                catch (SharpDXException sdx)
+                {
+                    if (asMappable)
+                        return _process(file, recovery, false, fBytes);
+                    //Trace.TraceError(sdx.ToString());
+                    return Result.Failed;
+                }
 
             return Result.NoAction;
         }
