@@ -17,6 +17,8 @@ namespace Armiger
 
         StreamWriter _journalWriter;
 
+        Random rand = new Random();
+
         public Recovery(string backupPath)
         {
             _backupPath = backupPath;
@@ -41,13 +43,9 @@ namespace Armiger
 
         public void Backup(IEnumerable<string> files)
         {
-            var rand = new Random();
-
             foreach (var file in files)
             {
-                var bkpPath = Path.Combine(_backupPath, Path.GetFileName(file));
-                while (File.Exists(bkpPath))
-                    bkpPath = Path.ChangeExtension(bkpPath, Path.GetExtension(bkpPath) + rand.Next(0, 10));
+                var bkpPath = GetBackupPath(file);
 
                 if (!_backupJournal.TryAdd(file, bkpPath))
                     throw new ArgumentException();
@@ -57,6 +55,15 @@ namespace Armiger
             }
         }
 
+        public string GetBackupPath(string file)
+        {
+            var bkpPath = Path.Combine(_backupPath, Path.GetFileName(file));
+            while (File.Exists(bkpPath))
+                bkpPath = Path.ChangeExtension(bkpPath, Path.GetExtension(bkpPath) + rand.Next(0, 10));
+
+            return bkpPath;
+        }
+
         public void Backup(params string[] files)
         {
             Backup(files as IEnumerable<string>);
@@ -64,13 +71,30 @@ namespace Armiger
 
         public void RestoreFromJournal()
         {
-            foreach (var line in File.ReadAllLines(_journalPath))
+            try
             {
-                var groups = line.Split(new[] { "::" }, StringSplitOptions.None);
+                foreach (var line in File.ReadAllLines(_journalPath))
+                {
+                    var groups = line.Split(new[] { "::" }, StringSplitOptions.None);
 
-                File.Delete(groups[0]);
-                File.Move(groups[1], groups[0]);//, Path.GetTempFileName());
-                Console.WriteLine("Restored " + Path.GetFileNameWithoutExtension(groups[1]));
+                    File.Delete(groups[0]);
+                    File.Move(groups[1], groups[0]);//, Path.GetTempFileName());
+                    Console.WriteLine("Restored " + Path.GetFileNameWithoutExtension(groups[1]));
+                }
+            }
+            catch (FileNotFoundException)
+            {
+                foreach (var line in File.ReadAllLines(_journalPath + ".safe"))
+                {
+                    var groups = line.Split(new[] { "::" }, StringSplitOptions.None);
+
+                    if (new FileInfo(groups[1]).Length == 0)
+                        continue;
+
+                    File.Delete(groups[0]);
+                    File.Move(groups[1], groups[0]);
+                    Console.WriteLine("Restored " + Path.GetFileNameWithoutExtension(groups[1]));
+                }
             }
         }
 

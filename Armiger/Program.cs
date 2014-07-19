@@ -16,7 +16,7 @@ namespace Armiger
             {
                 Trace.Listeners.Add(new ConsoleTraceListener(false));
 
-                //var recov = new Recovery(@"Backup\-8588327220423303413\");
+                //var recov = new Recovery(@"Backup\-8588327180719113228");
                 //recov.RestoreFromJournal();
                 //Console.ReadKey();
                 //return;

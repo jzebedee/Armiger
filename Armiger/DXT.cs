@@ -10,6 +10,7 @@ using System.Diagnostics;
 using SharpDX;
 using SharpDX.Direct3D;
 using SharpDX.Direct3D11;
+using SharpDX.Toolkit.Graphics;
 using GraphicsDevice = SharpDX.Toolkit.Graphics.GraphicsDevice;
 using Job = System.Collections.Generic.KeyValuePair<string, byte[]>;
 using JobResult = System.Tuple<string, Armiger.DXTManager.Result, byte[]>;
@@ -93,7 +94,17 @@ namespace Armiger
             using (var ms = new MemoryStream(fBytes))
                 try
                 {
-                    using (var tex = SharpDX.Toolkit.Graphics.Texture.Load(_device, ms, asMappable ? SharpDX.Toolkit.Graphics.TextureFlags.RenderTarget : SharpDX.Toolkit.Graphics.TextureFlags.ShaderResource, ResourceUsage.Default))
+                    var txFlags = asMappable ? SharpDX.Toolkit.Graphics.TextureFlags.RenderTarget : SharpDX.Toolkit.Graphics.TextureFlags.ShaderResource;
+
+                    bool cube = file.Contains("\\cubemaps\\");
+
+                    Texture tex;
+                    if (cube)
+                        tex = SharpDX.Toolkit.Graphics.TextureCube.Load(_device, ms, txFlags, ResourceUsage.Default);
+                    else
+                        tex = SharpDX.Toolkit.Graphics.Texture2D.Load(_device, ms, txFlags, ResourceUsage.Default);
+
+                    using (tex)
                     {
                         if (tex.Description.BindFlags.HasFlag(BindFlags.RenderTarget | BindFlags.ShaderResource) && tex.Description.MipLevels > 1)
                         {
@@ -102,39 +113,45 @@ namespace Armiger
 
                             code |= Result.GeneratedMipmaps;
                         }
+
                         if (!tex.IsBlockCompressed)
                         {
-                            var loadOpts = new ImageLoadInformation()
-                            {
-                                Format = SharpDX.DXGI.Format.BC3_UNorm,
-                            };
-
-                            //var loadOpts = new ImageLoadInformation
+                            Console.WriteLine(tex.Description.Format);
+                            //var loadOpts = new ImageLoadInformation()
                             //{
-                            //    //BindFlags = desc.BindFlags,
-                            //    //CpuAccessFlags = desc.CpuAccessFlags,
-                            //    //Depth = desc.Depth,
-                            //    //Filter = FilterFlags.None,
-                            //    //FirstMipLevel = 0,
-                            //    Format = SharpDX.DXGI.Format.BC3_UNorm_SRgb,
-                            //    //Height = tex.Height,
-                            //    //Width = tex.Width,
-                            //    //MipFilter = FilterFlags.,
-                            //    //MipLevels = desc.MipLevels,
-                            //    //OptionFlags = desc.OptionFlags,
-                            //    //PSrcInfo = new IntPtr(&imginf),
-                            //    //Usage = desc.Usage,
+                            //    //Format = SharpDX.DXGI.Format.bc3,
                             //};
+
+                            var desc = tex.Description;
+                            var loadOpts = new ImageLoadInformation
+                            {
+                                BindFlags = desc.BindFlags,
+                                CpuAccessFlags = desc.CpuAccessFlags,
+                                Depth = desc.Depth,
+                                Filter = FilterFlags.None,
+                                //FirstMipLevel = desc.MipLevels,// 0,
+                                Format = desc.Format,//SharpDX.DXGI.Format.BC3_UNorm_SRgb,
+                                Height = tex.Height,
+                                Width = tex.Width,
+                                MipFilter = FilterFlags.Box,
+                                MipLevels = desc.MipLevels,
+                                OptionFlags = desc.OptionFlags,
+                                //PSrcInfo = new IntPtr(&imginf),
+                                Usage = desc.Usage,
+                            };
 
                             ms.Seek(0, SeekOrigin.Begin);
                             System.Diagnostics.Trace.Assert(tex.GetType() == typeof(SharpDX.Toolkit.Graphics.Texture2D));
-                            using (var newTex = Texture2D.FromStream(_device, ms, fLen, loadOpts))
+                            System.Diagnostics.Trace.Assert(!cube);
+                            //using (var newTex = SharpDX.Direct3D11.Texture2D.FromStream(_device, ms, fLen))//, loadOpts))
+                            using (var newTex = SharpDX.Toolkit.Graphics.Texture2D.Load(_device, ms, txFlags, ResourceUsage.Default))//(_device, ms, fLen))//, loadOpts))
                             {
                                 using (var msNew = new MemoryStream())
                                 {
-                                    Texture2D.ToStream(_device, newTex, ImageFileFormat.Dds, msNew);
+                                    SharpDX.Direct3D11.Texture2D.ToStream(_device, newTex, ImageFileFormat.Dds, msNew);
 
-                                    recovery.Backup(file);
+                                    File.Copy(file, recovery.GetBackupPath(Path.GetFileNameWithoutExtension(file) + "_orig.dds"));
+                                    //recovery.Backup(file);
                                     output = msNew.ToArray();
                                 }
 
@@ -151,8 +168,13 @@ namespace Armiger
                     Trace.TraceError(sdx.ToString());
                     code = Result.Failed;
                 }
+                catch (NullReferenceException nre)
+                {
+                    Trace.TraceError(nre.ToString());
+                    code = Result.Failed;
+                }
 
-            return new JobResult(file, code, output);
+            return new JobResult(recovery.GetBackupPath(file), code, output);
         }
     }
 }
